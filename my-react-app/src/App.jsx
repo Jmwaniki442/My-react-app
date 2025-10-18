@@ -1,31 +1,58 @@
 import { useState } from "react";
-import { Search } from "lucide-react";
+import SearchBar from "./components/SearchBar";
+import WeatherCard from "./components/WeatherCard";
+import ForecastCard from "./components/ForecastCard";
 
 export default function App() {
   const [city, setCity] = useState("");
   const [weather, setWeather] = useState(null);
-  const [error, setError] = useState("");
+  const [forecast, setForecast] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const API_KEY = "27f2ac3a022c0a20a9ba544face76008"; 
 
-  const handleSearch = async () => {
+  const handleSearch = () => {
     if (!city) return;
+    fetchWeather(`q=${city}`);
+  };
 
+  const handleLocation = () => {
+    if (!navigator.geolocation) {
+      setError("Geolocation not supported.");
+      return;
+    }
     setLoading(true);
-    setError("");
-    setWeather(null);
-
-    try {
-      const response = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${API_KEY}`
-      );
-
-      if (!response.ok) {
-        throw new Error("City not found 😔");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        fetchWeather(`lat=${latitude}&lon=${longitude}`);
+      },
+      () => {
+        setError("Unable to retrieve location");
+        setLoading(false);
       }
+    );
+  };
 
-      const data = await response.json();
+  const fetchWeather = async (query) => {
+    try {
+      setLoading(true);
+      setError("");
+      setWeather(null);
+      setForecast([]);
+
+      const resWeather = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?${query}&units=metric&appid=${API_KEY}`
+      );
+      if (!resWeather.ok) throw new Error("City not found");
+      const data = await resWeather.json();
+
+      const resForecast = await fetch(
+        `https://api.openweathermap.org/data/2.5/forecast?${query}&units=metric&appid=${API_KEY}`
+      );
+      const forecastData = await resForecast.json();
+      const dailyForecast = forecastData.list.filter((_, i) => i % 8 === 0);
 
       setWeather({
         name: data.name,
@@ -35,7 +62,10 @@ export default function App() {
         wind: data.wind.speed,
         condition: data.weather[0].description,
         icon: data.weather[0].icon,
+        lat: data.coord.lat,
+        lon: data.coord.lon,
       });
+      setForecast(dailyForecast);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -45,57 +75,20 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-500 to-indigo-700 flex flex-col items-center justify-center text-white p-6">
-      <h1 className="text-3xl font-bold mb-6">🌤 Weather App</h1>
+      <h1 className="text-3xl font-bold mb-6">🌦 Weather App</h1>
 
-      {/* Search Bar */}
-      <div className="flex w-full max-w-md bg-white/20 backdrop-blur-md rounded-2xl overflow-hidden border border-white/30 shadow-lg">
-        <input
-          type="text"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          placeholder="Enter city name..."
-          className="flex-grow px-4 py-3 bg-transparent outline-none text-white placeholder-gray-300"
-        />
-        <button
-          onClick={handleSearch}
-          className="bg-blue-700 hover:bg-blue-800 px-4 flex items-center justify-center transition"
-        >
-          <Search size={20} />
-        </button>
-      </div>
+      <SearchBar
+        city={city}
+        setCity={setCity}
+        onSearch={handleSearch}
+        onLocation={handleLocation}
+      />
 
-      {/* Status */}
       {loading && <p className="mt-6 text-lg animate-pulse">Fetching weather...</p>}
       {error && <p className="mt-6 text-red-200">{error}</p>}
 
-      {/* Weather Card */}
-      {weather && (
-        <div className="mt-8 bg-white/10 p-8 rounded-2xl shadow-2xl backdrop-blur-sm text-center w-full max-w-sm">
-          <h2 className="text-2xl font-semibold">{weather.name}</h2>
-          <img
-            src={`https://openweathermap.org/img/wn/${weather.icon}@2x.png`}
-            alt="Weather icon"
-            className="mx-auto"
-          />
-          <p className="text-5xl font-bold">{Math.round(weather.temp)}°C</p>
-          <p className="capitalize text-lg mt-1">{weather.condition}</p>
-
-          <div className="grid grid-cols-2 gap-4 mt-6 text-sm">
-            <div className="bg-white/20 p-3 rounded-lg">
-              <p className="font-semibold">Feels Like</p>
-              <p>{Math.round(weather.feelsLike)}°C</p>
-            </div>
-            <div className="bg-white/20 p-3 rounded-lg">
-              <p className="font-semibold">Humidity</p>
-              <p>{weather.humidity}%</p>
-            </div>
-            <div className="bg-white/20 p-3 rounded-lg col-span-2">
-              <p className="font-semibold">Wind Speed</p>
-              <p>{weather.wind} m/s</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <WeatherCard weather={weather} />
+      <ForecastCard forecast={forecast} />
     </div>
   );
 }
